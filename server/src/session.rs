@@ -1,6 +1,6 @@
 use actix::prelude::*;
 use actix_web_actors::ws;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json;
 use std::time::{Duration, Instant};
 //use serde::{Deserialize, Serialize};
@@ -149,76 +149,21 @@ impl StreamHandler<actix_web::Result<ws::Message, ws::ProtocolError>> for WsChat
             ws::Message::Pong(_) => {
                 self.hb = Instant::now();
             }
-            ws::Message::Text(text) => {
-                let m = text.trim();
-                // we check for /sss type of messages
-
-                if m.starts_with('/') {
-                    let v: Vec<&str> = m.splitn(2, ' ').collect();
-                    match v[0] {
-                        "/list" => {
-                            // Send ListRooms message to chat server and wait for
-                            // response
-                            println!("List rooms");
-                            self.addr
-                                .send(server::ListRooms)
-                                .into_actor(self)
-                                .then(|res, _, ctx| {
-                                    match res {
-                                        Ok(rooms) => {
-                                            for room in rooms {
-                                                ctx.text(room);
-                                            }
-                                        }
-                                        _ => println!("Something is wrong"),
-                                    }
-                                    fut::ready(())
-                                })
-                                .wait(ctx)
-                            // .wait(ctx) pauses all ev.data events in context,
-                            // so actor wont receive any new messages until it get list
-                            // of rooms back
-                        }
-
-                        "/name" => {
-                            if v.len() == 2 {
-                                self.name = Some(v[1].to_owned());
-                            } else {
-                                ctx.text("!!! name is required");
-                            }
-                        }
-                        _ => ctx.text(format!("!!! unknown command: {m:?}")),
+            ws::Message::Text(m) => {
+                let km: KahootMessage = serde_json::from_str(&m).unwrap();
+                match km {
+                    KahootMessage::Start => {
+                        self.addr.do_send(server::Start { id: self.id });
                     }
-                } else {
-                    let km: KahootMessage = serde_json::from_str(m).unwrap();
-                    match km {
-                        KahootMessage::Start => {
-                            self.addr.do_send(server::Start { id: self.id });
-                        }
-                        KahootMessage::Response(res) => {
-                            self.addr.do_send(server::UserResponse {
-                                id: self.id,
-                                reponse: res.response_value,
-                            });
-                            if res.response_value == res.response_value {
-                            println!("oui");
-                            }
-                        }
-                        KahootMessage::Join(joi) => {
-                            self.addr.do_send(server::Join { code: joi.code });
-                        }
+                    KahootMessage::Response(res) => {
+                        self.addr.do_send(server::UserResponse {
+                            id: self.id,
+                            reponse: res.response_value,
+                        });
                     }
-                    let msg = if let Some(ref name) = self.name {
-                        format!("{name}: {m}")
-                    } else {
-                        m.to_owned()
-                    };
-                    // send message to chat server
-                    self.addr.do_send(server::ClientMessage {
-                        id: self.id,
-                        msg,
-                        room: self.room.clone(),
-                    })
+                    KahootMessage::Join(joi) => {
+                        self.addr.do_send(server::Join { code: joi.code });
+                    }
                 }
             }
 

@@ -6,6 +6,7 @@ use yew_agent::{Bridge, Bridged};
 extern crate iron;
 use wasm_bindgen::JsCast;
 
+
 pub enum Msg {
     HandleMsg(String),
     SubmitMessage(MsgTypes),
@@ -17,7 +18,6 @@ pub enum MsgTypes {
     Join(StructJoin),
     Start,
     Response(StructResponse),
-    Wait,
 }
 
 #[derive(Debug, Serialize)]
@@ -43,10 +43,11 @@ pub enum ReceivedMessage {
 }
 
 pub struct Chat {
-    chat_input: NodeRef,
+  //  chat_input: NodeRef,
     wss: WebsocketService,
     current_question: Option<i32>,
     _producer: Box<dyn Bridge<EventBus>>,
+    answered: bool,
 }
 
 impl Msg {
@@ -56,14 +57,14 @@ impl Msg {
             response_value,
         }))
     }
-}
+    }
 
 impl Component for Chat {
     type Message = Msg;
     type Properties = ();
 
     fn create(ctx: &Context<Self>) -> Self {
-        let mut wss = WebsocketService::new();
+        let wss = WebsocketService::new();
         let window = web_sys::window().unwrap();
         let document = window.document().unwrap();
         let html_document = document.dyn_into::<web_sys::HtmlDocument>().unwrap();
@@ -78,13 +79,12 @@ impl Component for Chat {
             log::debug!("message sent successfully");
         }
 
-        //TODO:
-
         Self {
-            chat_input: NodeRef::default(),
+     //       chat_input: NodeRef::default(),
             wss,
             current_question: None,
             _producer: EventBus::bridge(ctx.link().callback(Msg::HandleMsg)),
+            answered: false,
         }
     }
 
@@ -96,11 +96,15 @@ impl Component for Chat {
                 match received_msg {
                     ReceivedMessage::Question(q) => {
                         self.current_question = Some(q.question_value);
+                        self.answered = false;
                         true
                     }
                 }
             }
-            Msg::SubmitMessage(message) => {
+            Msg::SubmitMessage(ref message) => {
+                if let MsgTypes::Response(_response) = message {
+                    self.answered = true;
+                }
                 if let Err(e) = self
                     .wss
                     .tx
@@ -109,14 +113,16 @@ impl Component for Chat {
                 {
                     log::debug!("error sending to channel: {:?}", e);
                 }
-                false
+                match message {
+                    MsgTypes::Response(_r) => true,
+                    _ => false
+                }
             }
         }
     }
     fn view(&self, ctx: &Context<Self>) -> Html {
         let onclick = ctx.link().callback(|_| Msg::SubmitMessage(MsgTypes::Start));
-     //   let click = ctx.link().callback(|_| Msg::SubmitMessage(MsgTypes::Wait));
-        let started = false;
+        let _started = false;
         match self.current_question {
             None => {
                 html! {
@@ -124,41 +130,59 @@ impl Component for Chat {
                          <div class="grow h-screen flex flex-col">
                              <div class="container mx-auto flex flex-col justify-center items-center">
                                  <div class="flex">
-                       <button {onclick} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r"> {"Start the game"}
-                     </button>
-                     </div>
-                     </div>
-                     </div>
-                     </div>
+                        <button {onclick} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r"> {"Start the game"}
+                        </button>
+                </div>
+                    <div class="flex">
+                      <p class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">{"Waiting other player"}</p>
+                </div>
+                        </div>
+                            </div>
+                                </div>
                  }
             }
-            Some(question_index) => {
-                html! {
-                    <div class="flex w-screen">
-                        <div class="grow h-screen flex flex-col">
-                            <div class="w-full h-14 border-b-2 border-gray-300"></div>
-                            <div class="container mx-auto flex flex-col justify-center items-center">
-                                <div class="flex">
-                                    <button onclick={ctx.link().callback(|_| Msg::new_response(0,0))} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">
-                                        {"réponse A"}
-                                    </button>
-                                    <button onclick={ctx.link().callback(|_| Msg::new_response(0,1))} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">
-                                        {"réponse b"}
-                                    </button>
-                                </div>
-                                <div class="flex">
-                                    <button onclick={ctx.link().callback(|_| Msg::new_response(0,2))} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">
-                                        {"réponse c"}
-                                    </button>
-                                    <button onclick={ctx.link().callback(|_| Msg::new_response(0,3))} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">
-                                        {"réponse d"}
-                                    </button>
-
-                                </div>
-                            </div>
-                        </div>
+            Some(current_question) => {
+                if self.answered == true {
+                    html! {
+                        <div class="flex w-screen">
+                         <div class="grow h-screen flex flex-col">
+                             <div class="container mx-auto flex flex-col justify-center items-center">
+                                 <div class="flex">
+                     <p class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">{"Waiting other player"}</p>
+                    </div>
+                    </div>
+                    </div>
                     </div>
 
+                    }
+                } else {
+                    html! {
+                       <div class="flex w-screen">
+                           <div class="grow h-screen flex flex-col">
+                               <div class="w-full h-14 border-b-2 border-gray-300"></div>
+                               <div class="container mx-auto flex flex-col justify-center items-center">
+                                   <div class="flex">
+                                       <button onclick={ctx.link().callback(move|_| Msg::new_response(current_question,0))} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">
+                                           {"réponse A"}
+                                       </button>
+                                       <button onclick={ctx.link().callback(move|_| Msg::new_response(current_question,1))} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">
+                                           {"réponse b"}
+                                       </button>
+                                   </div>
+                                   <div class="flex">
+                                       <button onclick={ctx.link().callback(move|_| Msg::new_response(current_question,2))} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">
+                                           {"réponse c"}
+                                       </button>
+                                       <button onclick={ctx.link().callback(move|_| Msg::new_response(current_question,3))} class="px-8 rounded-lg bg-violet-600 text-white font-bold p-4 uppercase border-violet-600 border-t border-b border-r">
+                                           {"réponse d"}
+                                       </button>
+
+                                   </div>
+                               </div>
+                           </div>
+                       </div>
+
+                    }
                 }
             }
         }

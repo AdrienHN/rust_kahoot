@@ -9,15 +9,16 @@ use std::{
 use actix::*;
 use actix_files::{Files, NamedFile};
 use actix_web::{
-    middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
+    middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder, Result,
 };
 use actix_web_actors::ws;
-use actix_web_lab::web as web_lab;
+
 
 mod server;
 mod session;
 
 async fn index() -> impl Responder {
+    log::info!("index");
     NamedFile::open_async("./static/index.html").await.unwrap()
 }
 
@@ -46,7 +47,7 @@ async fn get_count(count: web::Data<AtomicUsize>) -> impl Responder {
     format!("Visitors: {current_count}")
 }
 
-async fn get_create(create: web::Data<AtomicUsize>) -> impl Responder {
+async fn get_create(_create: web::Data<AtomicUsize>) -> impl Responder {
     let mut ran = [0u8; 4];
     getrandom::getrandom(&mut ran).expect("impossible de generé un code aléatoire");
     let code = u32::from_be_bytes(ran) % 100_000;
@@ -54,6 +55,11 @@ async fn get_create(create: web::Data<AtomicUsize>) -> impl Responder {
 
 }
 
+#[actix_web::get("/{name}")]
+async fn room(name: web::Path<String>) -> Result<impl Responder> {
+    log::info!("here: {}", name);
+    Ok(NamedFile::open_async("./static/room.html").await.unwrap())
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -77,6 +83,7 @@ async fn main() -> std::io::Result<()> {
             .route("/create", web::get().to(get_create))
             .route("/ws", web::get().to(chat_route))
             .service(Files::new("/static", "./static"))
+            .service(room)
             .wrap(Logger::default())
     })
     .workers(2)
